@@ -1,0 +1,2 @@
+2018/08/04 13:12:49 [emerg] 1#1: host not found in upstream "atm" in /etc/nginx/sites-available/atm.conf:2
+2018/08/04 13:19:09 [emerg] 1#1: host not found in upstream "atm" in /etc/nginx/sites-available/atm.conf:18

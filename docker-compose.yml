@@ -1,0 +1,234 @@
+version: "3"
+
+networks:
+    frontend:
+        driver: ${NETWORKS_DRIVER}
+    backend:
+        driver: ${NETWORKS_DRIVER}
+
+volumes:
+#    workspace:
+#        driver: ${VOLUMES_DRIVER}
+    redis:
+        driver: ${VOLUMES_DRIVER}
+    mongo:
+        driver: ${VOLUMES_DRIVER}
+    mysql:
+        driver: ${VOLUMES_DRIVER}
+    ats:
+        driver: ${VOLUMES_DRIVER}
+
+services:
+
+### Workspace ################################################
+#    workspace:
+#        build:
+#            context: ./workspace
+#            args:
+#                - PHP_VERSION=${PHP_VERSION}
+#                - INSTALL_MONGO=${WORKSPACE_INSTALL_MONGO}
+#                - INSTALL_SOAP=${WORKSPACE_INSTALL_SOAP}
+#        volumes:
+#            - ${APP_CODE_PATH_HOST}:${APP_CODE_PATH_CONTAINER}
+#        networks:
+#            - frontend
+#            - backend
+
+### php-fpm ################################################
+    php-fpm:
+        build:
+            context: ./php-fpm
+            args:
+                - INSTALL_XDEBUG=${PHP_FPM_INSTALL_XDEBUG}
+                - INSTALL_MONGO=${PHP_FPM_INSTALL_MONGO}
+                - INSTALL_SOAP=${PHP_FPM_INSTALL_SOAP}
+        volumes:
+            - ${APP_CODE_PATH_HOST}:${APP_CODE_PATH_CONTAINER}
+        networks: 
+            - backend
+### ats #####################################################
+    # ats:
+    #     build:
+    #         context: ./ats/
+    #         args:
+    #             - PHP_VERSION=${PHP_VERSION}
+    #             - INSTALL_MONGO=${PHP_FPM_INSTALL_MONGO}
+    #     volumes:
+    #         - ${APP_CODE_PATH_HOST}:${APP_CODE_PATH_CONTAINER}
+
+### atm #####################################################
+#    atm:
+#        build:
+#            context: ./atm/
+#        volumes:
+#            - ${APP_CODE_PATH_HOST}:${APP_CODE_PATH_CONTAINER}
+#        networks:
+#            - backend
+### Nginx Server ################################################
+    nginx:
+        build:
+            context: ./nginx/
+        volumes:
+            - ./nginx/ssl:/etc/nginx/ssl
+            - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+            - ${NGINX_HOST_LOG_PATH}:/var/log/nginx
+            - ${NGINX_SITES_PATH}:/etc/nginx/sites-available
+            - ${APP_CODE_PATH_HOST}:${APP_CODE_PATH_CONTAINER}
+              # - "./tf:/code/tf"
+            - "./atm.testing.local:/code/atm.testing.local"
+            # - "./redirect:/code/redirect"
+        ports:
+            - "${NGINX_HOST_HTTP_PORT}:80"
+            - "${NGINX_HOST_HTTPS_PORT}:443"
+        depends_on:
+            - php-fpm
+            # - atm
+            #            - tf
+            #            - realtime
+            #            - redirect
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://ats.local/ckr"]
+            interval: 1m30s
+            timeout: 10s
+            retries: 3
+            ##start_period: 40s  ##3.4up
+        networks:
+            frontend:
+                aliases:
+                    - "ats.local"
+                    - "tf.local"
+                    - "jobscenter.local"
+                    - "atm.local"
+            backend:
+                aliases:
+                    - "ats.local"
+                    - "tf.local"
+                    - "jobscenter.local"
+                    - "atm.local"
+
+
+### Redis ################################################
+    redis:
+        build:
+            context: ./redis/
+        volumes:
+            - ${DATA_PATH_HOST}/redis:/data
+        ports:
+            - "${REDIS_PORT}:6379"
+        networks:
+            - backend
+
+### MySQL Databases ################################################
+    mysql:
+        image: mysql:5.6
+        environment:
+            - MYSQL_ALLOW_EMPTY_PASSWORD=true
+            - MYSQL_DATABASE=ats
+        ports:
+            - "${MYSQL_PORT}:3306"
+        volumes:
+            - ${DATA_PATH_HOST}/mysql:/var/lib/mysql
+            - "./database:/docker-entrypoint-initdb.d"
+        networks:
+            - backend
+
+### MongoDB ##############################################
+    mongo:
+        build: ./mongo
+        ports:
+            - "${MONGODB_PORT}:27017"
+        volumes:
+            - ${DATA_PATH_HOST}/mongo:/data/db
+        networks:
+            - backend
+            - frontend
+
+### PM2 Server #######################################
+    # pm2:
+    #     build: ./pm2
+    #     volumes:
+    #         - ${APP_CODE_PATH_HOST}:${APP_CODE_PATH_CONTAINER}
+    #         - ./pm2/start.sh:/home/pm2/start.sh/:ro
+    #     environment:
+    #         - techsolutions=${ATS}
+    #         - control=${CENTER}
+    #     networks:
+    #         - backend
+
+#    tf_db:
+#        image: mysql:5.6
+#        environment:
+#            - MYSQL_ALLOW_EMPTY_PASSWORD=true
+#            - MYSQL_DATABASE=tf
+#        volumes:
+#            - "./database:/docker-entrypoint-initdb.d"
+
+
+#    realtime:
+#        build:
+#            context: ./realtime/
+#        depends_on:
+#            - mongo
+#            - redis
+#    redirect:
+#        build:
+#            context: ./redirect/
+#        volumes:
+#            - "./redirect:/code/redirect"
+#        depends_on:
+#            - mongo
+#            - redis
+
+
+
+# ### Logstash ##############################################
+#     logstash:
+#         build:
+#             context: logstash/
+#         volumes:
+#             - ./logstash/patterns:/etc/logstash/patterns
+#             - ./logstash/template/es_template.json:/etc/logstash/es_template.json:ro
+#             - ./logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+#             - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
+#             - ${APP_CODE_PATH_HOST}:${APP_CODE_PATH_CONTAINER}
+#         ports:
+#             - "5000:5000"
+#         environment:
+#             LS_JAVA_OPTS: "-Xmx256m -Xms256m"
+#         external_links:
+#             - elasticsearch:elasticsearch
+#         networks:
+#             - backend
+#         depends_on:
+#             - elasticsearch
+
+# ### Elasticsearch ##############################################
+#     elasticsearch:
+#         build:
+#             context: elasticsearch/
+#         volumes:
+#             - ./elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
+#         ports:
+#             - "9200:9200"
+#             - "9300:9300"
+#         environment:
+#             ES_JAVA_OPTS: "-Xmx256m -Xms256m"
+#         networks:
+#             - backend
+#             - frontend
+
+# ### kibana ##############################################
+#     kibana:
+#         build:
+#             context: kibana/
+#         volumes:
+#             - ./kibana/config/:/usr/share/kibana/config:ro
+#         ports:
+#             - "5601:5601"
+#         external_links:
+#             - elasticsearch:elasticsearch
+#         networks:
+#             - backend
+#             - frontend
+#         depends_on:
+#             - elasticsearch
